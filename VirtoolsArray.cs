@@ -39,7 +39,7 @@ namespace Swung0x48.Ballance.TdbReader
 
         #endregion
 
-        public VirtoolsArray(string sheetName, int chunkSize, int columnCount, int rowCount)
+        private VirtoolsArray(string sheetName, int chunkSize, int columnCount, int rowCount)
         {
             SheetName = sheetName;
             _chunkSize = chunkSize;
