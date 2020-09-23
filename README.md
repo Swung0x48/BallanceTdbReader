@@ -41,6 +41,20 @@ A simple Ballance game save file reader, parser & composer.
   ```
     Reset the cursor to the beginning of the internal byte array.
 ### VirtoolsArray
+
+This class, as its name, is just a class for VirtoolsArray.
+
+The correspondence of VirtoolsArray and the member funtion is shown below.
+
+`SheetName`
+| Tuple<string, FieldType>  <br/> Headers[0]| Tuple<string, FieldType> <br/> Header[1]| ... | Tuple<string, FieldType> <br/> Header[Header.length() - 1]|
+|---|---|---|---|
+|Object <br> Cells[0][0]|object <br> Cells[0][1]|...|object <br> Cells[0][Cells.length - 1]|
+|...|...|...|...|
+|Object <br> Cells[Cells.length - 1][0]|object <br> Cells[Cells.length - 1][1]|...|object <br> Cells[Cells.length - 1][Cells.length - 1]|
+
+The following are the explanation of these properties in detail.
+
 * ```C#
   string SheetName
   ```
