@@ -10,7 +10,7 @@ A simple Ballance game save file reader, parser & composer.
 ### ByteManipulator
 * ```C#
   byte[] Array
-  ``` 
+  ```
     Read-only property, returns the decoded byte array of this `ByteManipulator`  instance.
 * ```C#
   static async Task<ByteManipulator> Create(byte[]? encoded)
@@ -44,14 +44,51 @@ A simple Ballance game save file reader, parser & composer.
 
 This class, as its name, is just a class for VirtoolsArray.
 
-The correspondence of VirtoolsArray and the member funtion is shown below.
+The correspondence of a Virtools array in file and this VirtoolsArray class is shown below.
 
-`SheetName`
-| Tuple<string, FieldType>  <br/> Headers[0]| Tuple<string, FieldType> <br/> Header[1]| ... | Tuple<string, FieldType> <br/> Header[Header.length() - 1]|
-|---|---|---|---|
-|Object <br> Cells[0][0]|object <br> Cells[0][1]|...|object <br> Cells[0][Cells.length - 1]|
-|...|...|...|...|
-|Object <br> Cells[Cells.length - 1][0]|object <br> Cells[Cells.length - 1][1]|...|object <br> Cells[Cells.length - 1][Cells.length - 1]|
+<escape>
+
+<table>
+    <thead>
+        <tr>
+            <th colspan=4>string </br> SheetName</th>
+        </tr>
+        <tr>
+            <th>Tuple&lt;string, FieldType&gt;  <br/> Headers[0]</th>
+            <th>Tuple&lt;string, FieldType&gt;  <br/> Headers[1]</th>
+            <th>...</th>
+            <th>Tuple&lt;string, FieldType&gt;  <br/> Headers[Headers.length - 1]</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>object <br/> Cells[0][0]</td>
+          <td>object <br/> Cells[0][1]</td>
+          <td>...</td>
+          <td>object <br> Cells[0][Cells[0].length - 1]</td>
+        </tr>
+        <tr>
+          <td>object <br/> Cells[1][0]</td>
+          <td>object <br/> Cells[1][1]</td>
+          <td>...</td>
+          <td>object <br> Cells[1][Cells[0].length - 1]</td>
+        </tr>
+        <tr>
+          <td>...</td>
+          <td>...</td>
+          <td>...</td>
+          <td>...</td>
+        </tr>
+        <tr>
+          <td>object <br/> Cells[Cells.length - 1][0]</td>
+          <td>object <br/> Cells[Cells.length - 1][1]</td>
+          <td>...</td>
+          <td>object <br> Cells[Cells.length - 1][Cells[0].length - 1]</td>
+        </tr>
+    </tbody>
+</table>
+
+</escape>
 
 The following are the explanation of these properties in detail.
 
@@ -59,7 +96,7 @@ The following are the explanation of these properties in detail.
   string SheetName
   ```
     Read-only property, returns a string, indicating the `SheetName` of this VirtoolsArray instance.
-    
+  
 * ```C#
   List<Tuple<string, FieldType>> Headers
   ```
