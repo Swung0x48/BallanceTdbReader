@@ -1,5 +1,6 @@
 # BallanceTdbReader
 A simple Ballance game save file reader, parser & composer.
+The following is the README for the legacy version. It may not be relevant now.
 
 ## Features
 1. `ByteManipulator`: A wrapper to encode/decode `Database.tdb` file, and provides APIs to easily read specific data from the file. Just calling the APIs, no manual byte manipulation required.

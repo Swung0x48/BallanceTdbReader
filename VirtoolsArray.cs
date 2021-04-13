@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Text;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace Swung0x48.Ballance.TdbReader
@@ -9,14 +9,14 @@ namespace Swung0x48.Ballance.TdbReader
     {
         #region Constants & enums
 
-        public enum FieldType : int
+        public enum FieldType
         {
             Int32 = 1,
             Float = 2,
             String = 3
         }
 
-        private static readonly List<string> keys = new List<string>
+        private static readonly List<string> keys = new()
         {
             "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "BackSpace", "Tab", "Q", "W", "E", "R", "T",
             "Y", "U", "I", "O", "P",
@@ -25,117 +25,175 @@ namespace Swung0x48.Ballance.TdbReader
             "Right Shift", "Alt", "Space", "Num 7", "Num 8", "Num 9", "Num -", "Num 4", "Num 5", "Num 6", "Num +",
             "Num 1", "Num 2", "Num 3", "Num 0", "Num Del", "<", "Up", "Down", "Left", "Right"
         };
-
+        
         #endregion
 
-        #region Member variables
+        public string SheetName { get; set; }
+        public int ChunkSize { get; private set; }
+        public int ColumnCount { get; private set; }
+        public int RowCount { get; private set; }
 
-        public string SheetName { get; private set; }
-        private int _chunkSize;
-        private int _columnCount;
-        private int _rowCount;
-        public List<Tuple<string, FieldType>> Headers { get; private set; }
-        public object[,] Cells { get; private set; }
+        public List<Tuple<string, FieldType>> Headers { get; private set; } = null!;
+        public object[,] Cells { get; set; } = null!;
 
-        #endregion
-
-        private VirtoolsArray(string sheetName, int chunkSize, int columnCount, int rowCount)
+        private VirtoolsArray(string sheetName, int chunkSize)
         {
             SheetName = sheetName;
-            _chunkSize = chunkSize;
-            _columnCount = columnCount;
-            _rowCount = rowCount;
-            Headers = new List<Tuple<string, FieldType>>(columnCount);
-            Cells = new object[columnCount, rowCount];
+            ChunkSize = chunkSize;
         }
 
-        public static async Task<VirtoolsArray> Create(ByteManipulator bm)
-        {
-            return await Task.Run(() =>
-            {
-                var sheetName = bm.ReadString();
-                var chunkSize = bm.ReadInt();
-                var columnCount = bm.ReadInt();
-                var rowCount = bm.ReadInt();
-                bm.ReadInt(); // Skip EOF byte (-1 / 0x FFFF FFFF).
+        private static Task<VirtoolsArray> ReadMetadataAsync(BinaryReader tdbReader)
+            => Task.Run(() => 
+                new VirtoolsArray(tdbReader.ReadString(), tdbReader.ReadInt32()));
 
-                return new VirtoolsArray(sheetName, chunkSize, columnCount, rowCount);
+        private Task DetermineSizeAsync(BinaryReader tdbReader)
+            => Task.Run(() => {
+                ColumnCount = tdbReader.ReadInt32();
+                RowCount = tdbReader.ReadInt32();
+                Headers = new List<Tuple<string, FieldType>>(ColumnCount);
+                Cells = new object[ColumnCount, RowCount];
+                
+                tdbReader.ReadInt32(); // Skip EOF byte (-1 / 0x FFFF FFFF).
             });
-        }
 
-        public async Task SetHeader(ByteManipulator bm)
-        {
-            await Task.Run(() =>
-            {
-                for (int i = 0; i < _columnCount; i++)
+        private Task SetHeaderAsync(BinaryReader tdbReader)
+            => Task.Run(() => {
+                for (var i = 0; i < ColumnCount; i++)
                 {
-                    var headerName = bm.ReadString();
-                    var headerType = (FieldType)bm.ReadInt();
+                    var headerName = tdbReader.ReadString();
+                    var headerType = (FieldType) tdbReader.ReadInt32();
                     var header = new Tuple<string, FieldType>(headerName, headerType);
                     Headers.Add(header);
                 }
             });
-            
-        }
 
-        public async Task PopulateCells(ByteManipulator bm)
-        {
-            await Task.Run(() =>
+        public async Task PopulateAsync(ReadOnlyMemory<byte> chunk)
+            => await Task.Run(async () =>
             {
-                for (int i = 0; i < _columnCount; i++)
+                // var buffer = new byte[chunk.Length];
+                // chunk.CopyTo(buffer, 0);
+                var tdbStream = new TdbStream(false, false, chunk.Span.ToArray());
+                var tdbReader = new TdbReader(tdbStream);
+                await DetermineSizeAsync(tdbReader);
+                await SetHeaderAsync(tdbReader);
+                for (var i = 0; i < ColumnCount; i++)
                 {
-                    for (int j = 0; j < _rowCount; j++)
+                    for (var j = 0; j < RowCount; j++)
                     {
-                        switch (Headers[i].Item2)
+                        Cells[i, j] = Headers[i].Item2 switch
                         {
-                            case FieldType.Int32: Cells[i, j] = bm.ReadInt(); break;
-                            case FieldType.Float: Cells[i, j] = bm.ReadFloat(); break;
-                            case FieldType.String: Cells[i, j] = bm.ReadString(); break;
-                        }
+                            FieldType.Int32 => tdbReader.ReadInt32(),
+                            FieldType.Float => tdbReader.ReadSingle(),
+                            FieldType.String => tdbReader.ReadString(),
+                            _ => Cells[i, j]
+                        };
                     }
                 }
             });
+
+        public static async Task<VirtoolsArray> CreateAsync(TdbReader tdbReader, bool populate)
+        {
+            var ret = await ReadMetadataAsync(tdbReader);
+            if (!populate) return ret;
+            
+            var buffer = new byte[ret.ChunkSize];
+            tdbReader.Read(buffer);
+            await ret.PopulateAsync(buffer);
+
+            return ret;
         }
 
-        public async Task<byte[]> ToByteArray()
+        public static async Task<List<VirtoolsArray>> CreateListAsync(Stream stream)
         {
-            return await Task.Run(() =>
+            var tdbStream = new TdbStream(false, true, stream);
+            var tdbReader = new TdbReader(tdbStream);
+
+            var ret = new List<VirtoolsArray>();
+            var populateTasks = new List<Task>();
+
+            try
             {
-                var ret = new List<byte>(Encoding.ASCII.GetBytes(SheetName + '\0')); // Write sheet name.
-            
-                var tmp = new List<byte>();
-                tmp.AddRange(BitConverter.GetBytes(_columnCount));
-                tmp.AddRange(BitConverter.GetBytes(_rowCount));
-                tmp.AddRange(BitConverter.GetBytes(-1));    // Write separator.
-            
-                foreach (var item in Headers)
+                for (var i = 1; ; i++)
                 {
-                    tmp.AddRange(Encoding.ASCII.GetBytes(item.Item1 + '\0')); // Write header name.
-                    tmp.AddRange(BitConverter.GetBytes((int) item.Item2));       // Write header type.
+                    if (tdbStream.Position == tdbStream.Length)
+                        throw new EndOfStreamException();
+                    var virtoolsArray = await CreateAsync(tdbReader, false);
+                    ret.Add(virtoolsArray);
+                    var chunk = new byte[virtoolsArray.ChunkSize];
+
+                    tdbStream.Read(chunk);
+
+                    var memory = new ReadOnlyMemory<byte>(chunk);
+                    populateTasks.Add(virtoolsArray.PopulateAsync(memory));
                 }
-                for (int i = 0; i < _columnCount; i++)
+            }
+            catch (EndOfStreamException) {}
+
+            Task.WaitAll(populateTasks.ToArray());
+            return ret;
+        }
+
+        public Task<long> WriteToStreamAsync(Stream? stream)
+            => Task.Run(() => {
+                if (stream is not null && !stream.CanSeek)
+                    throw new NotSupportedException("Cannot write to a not seekable stream");
+                TdbStream tdbStream = stream is not TdbStream ? 
+                    new TdbStream(true, false, stream) : 
+                    (TdbStream) stream;
+
+                var arrayBeginPosition = tdbStream.Position;
+                var tdbWriter = new TdbWriter(tdbStream);
+                tdbWriter.Write(SheetName);
+                var chunkSizePosition = tdbStream.Position;
+                tdbWriter.Write(0);    // Write a padding for chunk size
+                var chunkBegin = tdbStream.Position;
+                
+                tdbWriter.Write(ColumnCount);
+                tdbWriter.Write(RowCount);
+                tdbWriter.Write(-1);    // Write padding.
+
+                foreach (var (item1, item2) in Headers)
                 {
-                    for (int j = 0; j < _rowCount; j++)
+                    tdbWriter.Write(item1); // Write header name.
+                    tdbWriter.Write((int) item2);   // Write header type.
+                }
+                
+                for (var i = 0; i < ColumnCount; i++)
+                {
+                    for (var j = 0; j < RowCount; j++)
                     {
                         switch (Headers[i].Item2)
                         {
-                            case FieldType.Int32: tmp.AddRange(BitConverter.GetBytes((int) Cells[i, j])); break;
-                            case FieldType.Float: tmp.AddRange(BitConverter.GetBytes((float) Cells[i, j])); break;
-                            case FieldType.String: tmp.AddRange(Encoding.ASCII.GetBytes((string) Cells[i, j] + '\0')); break;
+                            case FieldType.Int32: tdbWriter.Write((int) Cells[i, j]); break;
+                            case FieldType.Float: tdbWriter.Write((float) Cells[i, j]); break;
+                            case FieldType.String: tdbWriter.Write((string) Cells[i, j]); break;
+                            default:
+                                throw new InvalidOperationException($"Cannot cast {Headers[i].Item2} to a type.");
                         }
                     }
                 }
 
-                _chunkSize = tmp.Count;
-                ret.AddRange(BitConverter.GetBytes(_chunkSize)); // Write chunk size.
-                ret.AddRange(tmp); // Write the rest (headers and cells).
-
-                return ret.ToArray();
+                var arrayEndPosition = tdbStream.Position;
+                ChunkSize = (int) (arrayEndPosition - chunkBegin);
+                tdbStream.Position = chunkSizePosition;
+                tdbWriter.Write(ChunkSize);
+                tdbStream.Position = arrayEndPosition;
+                return arrayEndPosition - arrayBeginPosition;
             });
-        }
+        
+        public async Task<byte[]> ToArrayAsync()
+            => await Task.Run(async () =>
+            {
+                var tdbStream = new TdbStream(true, false);
+                var arraySize = await WriteToStreamAsync(tdbStream);
+                tdbStream.Seek(-arraySize, SeekOrigin.Current); // Seek to beginning of the chunk of this array
+                var ret = new byte[arraySize];
+                await tdbStream.ReadAsync(ret.AsMemory(0, (int) arraySize));
+                return ret;
+            });
+    
 
         public static int ConvertKeyToIndex(string key) => keys.IndexOf(key);
         public static string ConvertIndexToKey(int index) => keys[index];
-
     }
 }

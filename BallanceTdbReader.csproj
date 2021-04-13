@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <PackageId>Swung0x48.Ballance.TdbReader</PackageId>
-    <Version>0.0.3</Version>
+    <Version>1.1.0</Version>
     <Authors>Swung0x48</Authors>
+    <!-- <LangVersion>9.0</LangVersion> -->
     <PackageTags></PackageTags>
     <Description>
       A Nuget package to parse Ballance save file (Database.tdb).
